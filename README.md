@@ -4,7 +4,7 @@ Detects facs in images and classifies them when provided with a reference folder
 
 Usage :
 
-python main.py -i <input folder> -o <output_folder> [-r <reference_folder>]
+python main.py -i *input folder* -o *output_folder* [-r *reference_folder*]
 
 - The input folder contains the images to extract faces from
 - When provided, the reference folder can contain images to be used as reference for classifying the extracted faces
