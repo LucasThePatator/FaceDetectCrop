@@ -1,7 +1,6 @@
 # FaceDetectCrop
 
-Detects facs in images and classifies them when provided with a reference folder. It fir
-
+Detects facs in images and classifies them when provided with a reference folder.
 Usage :
 
 python main.py -i *input folder* -o *output_folder* [-r *reference_folder*]
