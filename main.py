@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from argparse import ArgumentParser
 from copy import deepcopy
+import torch
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
 
@@ -28,7 +29,7 @@ def make_reference_images(image, boxes):
         box = box.tolist()
         center = np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2])
         shape = np.array([box[2] - box[0], box[3] - box[1]])
-        shape = shape * 1.5
+        shape = shape * 2
         tl = center - shape / 2
         br = center + shape / 2
 
