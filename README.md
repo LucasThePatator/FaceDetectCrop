@@ -1,6 +1,6 @@
 # FaceDetectCrop
 
-Detectes facs in images and classifies them when provided with a reference folder. It fir
+Detects facs in images and classifies them when provided with a reference folder. It fir
 
 Usage :
 
