@@ -52,17 +52,17 @@ class Classifier:
 
     def make_ref_db(self, path):
         directory = Path(path)
-        for filename in os.listdir(path):
-            filename = Path(filename)
-            with Image.open(directory / filename) as image:
-                _, _, faces = self.detect_image(image)
-                if faces.shape[0] > 1:
-                    return None
+        for name in os.listdir(path):
+            for filename in os.listdir(directory / name):
+                filename = Path(filename)
+                with Image.open(directory / name / filename) as image:
+                    _, _, faces = self.detect_image(image)
+                    if faces.shape[0] > 1:
+                        return None
 
-                face_name = filename.stem
-                embedding = self.resnet(faces.cpu()).cpu()
+                    embedding = self.resnet(faces.cpu()).cpu()
 
-                self.embeddings.append((face_name, embedding))
+                    self.embeddings.append((name, embedding))
 
     def detect_image(self, image : Image):
         if image.mode != 'RGB':
@@ -109,6 +109,8 @@ if __name__ == "__main__":
         classifier.make_ref_db(args.reference_folder)
         for emb in classifier.embeddings:
             os.makedirs(output_folder/emb[0], exist_ok=True)
+    else:
+        os.makedirs(output_folder)
     
     for file_name in os.listdir(args.input_folder):
         print(f"Opening image {file_name}")
