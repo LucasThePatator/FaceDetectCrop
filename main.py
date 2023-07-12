@@ -58,7 +58,7 @@ class Classifier:
                 with Image.open(directory / name / filename) as image:
                     _, _, faces = self.detect_image(image)
                     if faces.shape[0] > 1:
-                        return None
+                        continue
 
                     embedding = self.resnet(faces.cpu()).cpu()
 
@@ -77,15 +77,18 @@ class Classifier:
         embeddings = self.resnet(faces.cpu()).cpu()
         nb_faces = embeddings.shape[0]
         names = [None for _ in range(nb_faces)]
+        distances = [None for _ in range(nb_faces)]
         for face_i in range(nb_faces):
             min_distance = 1e36
             for emb in self.embeddings:
                 value = torch.dist(embeddings[face_i, :], emb[1])
-                if value.data < min_distance and value.data > 0:
+                if value.data < min_distance:
                     min_distance=value
                     names[face_i] = emb[0]
+                    distances[face_i] = min_distance
 
-        return names 
+
+        return names, distances 
 
           
 if __name__ == "__main__":
@@ -119,7 +122,15 @@ if __name__ == "__main__":
             boxes, score, faces = classifier.detect_image(image)
             print(f"Found {len(boxes)} face{'s' if len(boxes) > 1 else ''}")
             if classify:
-                names = classifier.classify_faces(faces)
+                names, distances = classifier.classify_faces(faces)
+                good_indices = []
+                for index, (name, distance) in enumerate(zip(names, distances)):
+                    print(f"{name} with distance {distance}")
+                    if distance > 0.8:
+                        print("Rejecting")
+                    else :
+                        good_indices.append(index)
+                        
 
             if args.display:
                 plot_rectangle(image, boxes, names)
@@ -127,8 +138,7 @@ if __name__ == "__main__":
             reference_faces = make_reference_images(image, boxes)
             for face_i, ref_face in enumerate(reference_faces):
                 output_file_name = Path(file_name).stem + f"_{face_i}.png"
-                if classify:
+                if classify and face_i in good_indices:
                     output_file_name = names[face_i] + "/" + output_file_name
-                
                 ref_face.save(output_folder / output_file_name)
 
