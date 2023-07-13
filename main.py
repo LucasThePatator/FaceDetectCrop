@@ -8,6 +8,7 @@ from argparse import ArgumentParser
 from copy import deepcopy
 import torch
 from tqdm import tqdm
+import pickle
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
 
@@ -47,12 +48,22 @@ class Classifier:
         self.mtcnn = MTCNN(device="cpu", keep_all=True, select_largest=False,)
         self.resnet = InceptionResnetV1(pretrained='vggface2', device="cpu").eval()
 
-        self.embeddings = []
+        self.embeddings = {}
 
     def make_ref_db(self, path):
         directory = Path(path)
+        db_file_path = directory / "db.pt"
+
+        if db_file_path.exists():
+            print("Loading existing db")
+            with open(db_file_path, 'rb') as db_file:
+                self.embeddings = torch.load(db_file)
+            return
+
+        temp_embeddings = []
         for name in tqdm(os.listdir(path), desc = "Folders"):
             file_names = list(os.listdir(directory / name))
+
             for filename in tqdm(file_names, desc = name):
                 filename = Path(filename)
                 with Image.open(directory / name / filename) as image:
@@ -62,7 +73,20 @@ class Classifier:
 
                     embedding = self.resnet(faces.cpu()).cpu()
 
-                    self.embeddings.append((name, embedding))
+                    temp_embeddings.append((name, embedding))
+
+        emb_tensor = torch.empty((len(temp_embeddings), 512))
+        names = []
+
+        for index, (name, emb) in enumerate(temp_embeddings):
+            emb_tensor[index, :] = emb
+            names.append(name)
+
+        self.embeddings = {"names" : names, "embeddings" : emb_tensor}
+
+        with open(db_file_path, 'wb') as db_file:
+            torch.save(self.embeddings, db_file)
+
 
     def detect_image(self, image : Image):
         if image.mode != 'RGB':
@@ -80,13 +104,11 @@ class Classifier:
         distances = [None for _ in range(nb_faces)]
         for face_i in range(nb_faces):
             min_distance = 1e36
-            for emb in self.embeddings:
-                value = torch.dist(embeddings[face_i, :], emb[1])
-                if value.data < min_distance:
-                    min_distance=value
-                    names[face_i] = emb[0]
-                    distances[face_i] = min_distance
+            distances = torch.linalg.norm(embeddings[face_i, :] - self.embeddings["embeddings"], dim=1)
+            min_index = torch.argmin(distances).data
 
+            names[face_i] = self.embeddings["names"][min_index]
+            distances[face_i] = distances[min_index].data
 
         return names, distances 
 
@@ -103,8 +125,8 @@ def crop(args):
     if classify:
         print("Processing reference database...")
         classifier.make_ref_db(args.reference)
-        for emb in classifier.embeddings:
-            os.makedirs(output_folder/emb[0], exist_ok=True)
+        for name in classifier.embeddings["names"]:
+            os.makedirs(output_folder/name, exist_ok=True)
     else:
         os.makedirs(output_folder)
     
@@ -146,6 +168,7 @@ def crop(args):
 def sort(args):
     print("Sorting is not implemented yet")
     return
+    
     if args.reference == None:
         print("Path to network required")
 
@@ -154,6 +177,8 @@ def sort(args):
     display = args.display
 
     classifier = Classifier()
+    classifier.load_state_dict(torch.load(args.reference))
+
     if classify:
         classifier.make_ref_db(args.reference_folder)
         for emb in classifier.embeddings:
