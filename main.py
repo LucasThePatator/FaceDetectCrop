@@ -7,11 +7,11 @@ import numpy as np
 from argparse import ArgumentParser
 from copy import deepcopy
 import torch
+from tqdm import tqdm
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
 
 def plot_rectangle(image, boxes, names=None):
-
     draw_image = deepcopy(image)
     draw = ImageDraw.Draw(draw_image)
     for index, box in enumerate(boxes):
@@ -20,10 +20,9 @@ def plot_rectangle(image, boxes, names=None):
             draw.text(box, names[index], font=fnt, fill=(255, 255, 255, 255), anchor='lb')
 
     plt.imshow(draw_image)
-    plt.show()
+    plt.pause(2)
 
-def make_reference_images(image, boxes):
-    
+def make_reference_images(image, boxes): 
     ret_list = []
     for box in boxes:
         box = box.tolist()
@@ -52,8 +51,9 @@ class Classifier:
 
     def make_ref_db(self, path):
         directory = Path(path)
-        for name in os.listdir(path):
-            for filename in os.listdir(directory / name):
+        for name in tqdm(os.listdir(path), desc = "Folders"):
+            file_names = list(os.listdir(directory / name))
+            for filename in tqdm(file_names, desc = name):
                 filename = Path(filename)
                 with Image.open(directory / name / filename) as image:
                     _, _, faces = self.detect_image(image)
@@ -90,19 +90,65 @@ class Classifier:
 
         return names, distances 
 
-          
-if __name__ == "__main__":
+def crop(args):
+    classify = args.reference != None
+    input_folder = Path(args.input_folder)
+    output_folder = Path(args.output_folder)
+    display = args.display
 
-    argument_parser = ArgumentParser(prog="Face extractor")
-    argument_parser.add_argument("-r", "--reference_folder", help="Reference folded containing images of single faces with associated name")
-    argument_parser.add_argument("-i", "--input_folder", required=True, help="Folder of images to extract faces from")
-    argument_parser.add_argument("-o", "--output_folder", required=True, help="Folder containing the extracted faces")
-    argument_parser.add_argument("-d", "--display", help="Display the detected faces on images", action='store_true')
+    output_file_path = output_folder / "log.txt"
+    output_file = open(output_file_path, 'w')
 
+    classifier = Classifier()
+    if classify:
+        print("Processing reference database...")
+        classifier.make_ref_db(args.reference)
+        for emb in classifier.embeddings:
+            os.makedirs(output_folder/emb[0], exist_ok=True)
+    else:
+        os.makedirs(output_folder)
+    
 
-    args = argument_parser.parse_args()
+    file_names = list(os.listdir(args.input_folder))
 
-    classify = args.reference_folder != None
+    print("Processing images...")
+    progress_bar = tqdm(file_names, unit='im')
+    for file_name in progress_bar:
+        progress_bar.set_description(desc=file_name)
+        names = None
+        with Image.open(input_folder / file_name) as image:
+            boxes, score, faces = classifier.detect_image(image)
+            if boxes is None:
+                output_file.write(f"{file_name} : 0\n")
+                continue
+            output_file.write(f"{file_name} : {len(boxes)}\n")
+
+            if classify:
+                names, distances = classifier.classify_faces(faces)
+                good_indices = []
+                for index, (name, distance) in enumerate(zip(names, distances)):
+                    output_file.write(f"\t{name} : {distance}\n")
+                    if distance > args.confidence_threshold:
+                        pass
+                    else :
+                        good_indices.append(index)
+
+            if args.display:
+                plot_rectangle(image, boxes, names)
+
+            reference_faces = make_reference_images(image, boxes)
+            for face_i, ref_face in enumerate(reference_faces):
+                output_file_name = Path(file_name).stem + f"_{face_i}.png"
+                if classify and face_i in good_indices:
+                    output_file_name = names[face_i] + "/" + output_file_name
+                ref_face.save(output_folder / output_file_name)
+
+def sort(args):
+    print("Sorting is not implemented yet")
+    return
+    if args.reference == None:
+        print("Path to network required")
+
     input_folder = Path(args.input_folder)
     output_folder = Path(args.output_folder)
     display = args.display
@@ -126,7 +172,7 @@ if __name__ == "__main__":
                 good_indices = []
                 for index, (name, distance) in enumerate(zip(names, distances)):
                     print(f"{name} with distance {distance}")
-                    if distance > 0.8:
+                    if distance > args.confidence_threshold:
                         print("Rejecting")
                     else :
                         good_indices.append(index)
@@ -142,3 +188,21 @@ if __name__ == "__main__":
                     output_file_name = names[face_i] + "/" + output_file_name
                 ref_face.save(output_folder / output_file_name)
 
+
+if __name__ == "__main__":
+
+    argument_parser = ArgumentParser(prog="Face extractor")
+    argument_parser.add_argument("-r", "--reference", help="Reference folder containing images of single faces with associated name")
+    argument_parser.add_argument("-i", "--input_folder", required=True, help="Folder of images to extract faces from")
+    argument_parser.add_argument("-o", "--output_folder", required=True, help="Folder containing the extracted faces")
+    argument_parser.add_argument("-d", "--display", help="Display the detected faces on images", action='store_true')
+    argument_parser.add_argument("-t", "--confidence_threshold", help="Maximum embedding distance to reference images", default=0.8)
+    argument_parser.add_argument("-m", "--mode", required=True, choices=['crop', 'sort'])
+
+    args = argument_parser.parse_args()
+    if args.mode == 'sort':
+        sort(args)
+    elif args.mode == 'crop':
+        crop(args)
+
+   
