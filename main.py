@@ -9,6 +9,8 @@ from copy import deepcopy
 import torch
 from tqdm import tqdm
 import pickle
+import glob
+import shutil
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
 
@@ -44,8 +46,13 @@ def make_reference_images(image, boxes):
 
 
 class Classifier:
-    def __init__(self):
-        self.mtcnn = MTCNN(device="cpu", keep_all=True, select_largest=False,)
+    def __init__(self, mode="crop"):
+        self.mode = mode
+        if mode == "crop":
+            self.mtcnn = MTCNN(device="cpu", keep_all=True, select_largest=False)
+        else:
+            self.mtcnn = MTCNN(device="cpu", keep_all=False, select_largest=True)
+
         self.resnet = InceptionResnetV1(pretrained='vggface2', device="cpu").eval()
 
         self.embeddings = {}
@@ -118,9 +125,6 @@ def crop(args):
     output_folder = Path(args.output_folder)
     display = args.display
 
-    output_file_path = output_folder / "log.txt"
-    output_file = open(output_file_path, 'w')
-
     classifier = Classifier()
     if classify:
         print("Processing reference database...")
@@ -129,27 +133,31 @@ def crop(args):
             os.makedirs(output_folder/name, exist_ok=True)
     else:
         os.makedirs(output_folder)
-    
+
+    log_file_path = output_folder / "log.txt"
+    log_file = open(log_file_path, 'w')
 
     file_names = list(os.listdir(args.input_folder))
 
     print("Processing images...")
-    progress_bar = tqdm(file_names, unit='im')
-    for file_name in progress_bar:
-        progress_bar.set_description(desc=file_name)
+    progress_bar = tqdm(list(input_folder.rglob("*.*")))
+    for file in progress_bar:
+        progress_bar.set_description(desc=file.name)
+        file = Path(os.path.join(*file.parts[1:]))
         names = None
-        with Image.open(input_folder / file_name) as image:
+        with Image.open(input_folder / file) as image:
             boxes, score, faces = classifier.detect_image(image)
             if boxes is None:
-                output_file.write(f"{file_name} : 0\n")
+                log_file.write(f"{file} : 0\n")
                 continue
-            output_file.write(f"{file_name} : {len(boxes)}\n")
+
+            log_file.write(f"{file} : {len(boxes)}\n")
 
             if classify:
                 names, distances = classifier.classify_faces(faces)
                 good_indices = []
                 for index, (name, distance) in enumerate(zip(names, distances)):
-                    output_file.write(f"\t{name} : {distance}\n")
+                    log_file.write(f"\t{name} : {distance}\n")
                     if distance > args.confidence_threshold:
                         pass
                     else :
@@ -160,59 +168,58 @@ def crop(args):
 
             reference_faces = make_reference_images(image, boxes)
             for face_i, ref_face in enumerate(reference_faces):
-                output_file_name = Path(file_name).stem + f"_{face_i}.png"
+                output_file_name = file.with_stem(file.stem + f"_{face_i}")
                 if classify and face_i in good_indices:
-                    output_file_name = names[face_i] + "/" + output_file_name
-                ref_face.save(output_folder / output_file_name)
+                    output_file_name = Path(names[face_i]) / output_file_name
 
-def sort(args):
-    print("Sorting is not implemented yet")
-    return
-    
+                output_file_name = output_folder / output_file_name
+                os.makedirs(output_file_name.parent, exist_ok=True)
+                ref_face.save(output_file_name)
+
+def sort(args):  
     if args.reference == None:
-        print("Path to network required")
+        print("Path to db required")
 
     input_folder = Path(args.input_folder)
     output_folder = Path(args.output_folder)
     display = args.display
 
-    classifier = Classifier()
-    classifier.load_state_dict(torch.load(args.reference))
+    classifier = Classifier(mode="sort")
 
-    if classify:
-        classifier.make_ref_db(args.reference_folder)
-        for emb in classifier.embeddings:
-            os.makedirs(output_folder/emb[0], exist_ok=True)
-    else:
-        os.makedirs(output_folder)
+    print("Processing reference database...")
+    classifier.make_ref_db(args.reference)
+    for name in classifier.embeddings["names"]:
+        os.makedirs(output_folder/name, exist_ok=True)
+
+    log_file_path = output_folder / "log.txt"
+    log_file = open(log_file_path, 'w')
     
-    for file_name in os.listdir(args.input_folder):
-        print(f"Opening image {file_name}")
-        names = None
-        with Image.open(input_folder / file_name) as image:
-            boxes, score, faces = classifier.detect_image(image)
-            print(f"Found {len(boxes)} face{'s' if len(boxes) > 1 else ''}")
-            if classify:
-                names, distances = classifier.classify_faces(faces)
-                good_indices = []
-                for index, (name, distance) in enumerate(zip(names, distances)):
-                    print(f"{name} with distance {distance}")
-                    if distance > args.confidence_threshold:
-                        print("Rejecting")
-                    else :
-                        good_indices.append(index)
-                        
+    progress_bar = tqdm(list(input_folder.rglob("*.*")))
+    for file in progress_bar:
+        progress_bar.set_description(desc=file.name)
+        file = os.path.join(*file.parts[1:])
+        with Image.open(input_folder / file) as image:
 
+            boxes, score, faces = classifier.detect_image(image)
             if args.display:
                 plot_rectangle(image, boxes, names)
 
-            reference_faces = make_reference_images(image, boxes)
-            for face_i, ref_face in enumerate(reference_faces):
-                output_file_name = Path(file_name).stem + f"_{face_i}.png"
-                if classify and face_i in good_indices:
-                    output_file_name = names[face_i] + "/" + output_file_name
-                ref_face.save(output_folder / output_file_name)
+            if boxes is None:
+                log_file.write(f"{file} has no face\n")
+                continue
 
+            faces = torch.unsqueeze(faces, 0)
+            names, distances = classifier.classify_faces(faces)
+
+            if distances[0] > args.confidence_threshold:
+                log_file.write(f"{file} has {names[0]} but above threshold\n")
+                continue
+            else :
+                log_file.write(f"{file} has {names[0]}\n")
+                output_file_name = Path(names[0]) / file
+                output_file_name = output_folder / output_file_name
+                os.makedirs(output_file_name.parent, exist_ok=True)
+                shutil.copy2(input_folder / file, output_file_name)
 
 if __name__ == "__main__":
 
