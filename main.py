@@ -135,7 +135,7 @@ def crop(args, crop_factor):
             os.makedirs(output_folder/name, exist_ok=True)
 
     log_file_path = output_folder / "log.txt"
-    log_file = open(log_file_path, 'w')
+    log_file = open(log_file_path, 'w', encoding="utf-8")
 
     file_names = list(os.listdir(args.input_folder))
 
@@ -176,6 +176,8 @@ def crop(args, crop_factor):
                 os.makedirs(output_file_name.parent, exist_ok=True)
                 ref_face.save(output_file_name)
 
+    log_file.flush()
+
 def sort(args):  
     if args.reference == None:
         print("Path to db required")
@@ -191,14 +193,16 @@ def sort(args):
     os.makedirs(output_folder, exist_ok=True)
     for name in classifier.embeddings["names"]:
         os.makedirs(output_folder/name, exist_ok=True)
+    
+    os.makedirs(output_folder/"unsorted", exist_ok=True)
 
     log_file_path = output_folder / "log.txt"
-    log_file = open(log_file_path, 'w')
+    log_file = open(log_file_path, 'w', encoding="utf-8")
     
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
         if file.suffix not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
-            log_file(f"{file} is not an image")
+            log_file.write(f"{file} is not an image\n")
             continue
 
         progress_bar.set_description(desc=file.name)
@@ -211,20 +215,26 @@ def sort(args):
 
             if boxes is None:
                 log_file.write(f"{file} has no face\n")
-                continue
+                current_name="unsorted"
+                current_distance=0.0
+            else:
+                faces = torch.unsqueeze(faces, 0)
+                names, distances = classifier.classify_faces(faces)
 
-            faces = torch.unsqueeze(faces, 0)
-            names, distances = classifier.classify_faces(faces)
+                current_name=names[0]
+                current_distance=distances[0]
+                if distances[0] > args.confidence_threshold:
+                    log_file.write(f"{file}\t{names[0]}\t{distances[0]}\trejected\n")
+                    current_name="unsorted"
+                    current_distance=0.0
 
-            if distances[0] > args.confidence_threshold:
-                log_file.write(f"{file}\t{names[0]}\t{distances[0]}\trejected\n")
-                continue
-            else :
-                log_file.write(f"{file}\t{names[0]}\t{distances[0]}\n")
-                output_file_name = Path(names[0]) / file
-                output_file_name = output_folder / output_file_name
-                os.makedirs(output_file_name.parent, exist_ok=True)
-                shutil.move(input_folder / file, output_file_name)
+            log_file.write(f"{file}\t{current_name}\t{current_distance}\n")
+            output_file_name = Path(current_name) / file
+            output_file_name = output_folder / output_file_name
+            os.makedirs(output_file_name.parent, exist_ok=True)
+            shutil.move(input_folder / file, output_file_name)
+
+    log_file.flush()
 
 if __name__ == "__main__":
 
