@@ -1,5 +1,5 @@
 from facenet_pytorch import MTCNN, InceptionResnetV1
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFile
 from matplotlib import pyplot as plt
 import os
 from pathlib import Path
@@ -54,8 +54,9 @@ class Classifier:
             self.mtcnn = MTCNN(device="cpu", keep_all=False, select_largest=True)
 
         self.resnet = InceptionResnetV1(pretrained='vggface2', device="cpu").eval()
-
         self.embeddings = {}
+
+        ImageFile.LOAD_TRUNCATED_IMAGES 
 
     def make_ref_db(self, path):
         directory = Path(path)
