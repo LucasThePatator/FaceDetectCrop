@@ -142,6 +142,10 @@ def crop(args, crop_factor):
     print("Processing images...")
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
+        if file.suffix.lower() not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
+            log_file.write(f"{file} is not an image\n")
+            continue
+        
         progress_bar.set_description(desc=file.name)
         file = Path(os.path.join(*file.parts[1:]))
         names = None
@@ -201,7 +205,7 @@ def sort(args):
     
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
-        if file.suffix not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
+        if file.suffix.lower() not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
             log_file.write(f"{file} is not an image\n")
             continue
 
