@@ -196,6 +196,10 @@ def sort(args):
     
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
+        if file.suffix not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
+            log_file(f"{file} is not an image")
+            continue
+        
         progress_bar.set_description(desc=file.name)
         file = os.path.join(*file.parts[1:])
         with Image.open(input_folder / file) as image:
@@ -212,14 +216,14 @@ def sort(args):
             names, distances = classifier.classify_faces(faces)
 
             if distances[0] > args.confidence_threshold:
-                log_file.write(f"{file} has {names[0]} but above threshold\n")
+                log_file.write(f"{file}\t{names[0]}\t{distances[0]}\trejected\n")
                 continue
             else :
-                log_file.write(f"{file} has {names[0]}\n")
+                log_file.write(f"{file}\t{names[0]}\t{distances[0]}\n")
                 output_file_name = Path(names[0]) / file
                 output_file_name = output_folder / output_file_name
                 os.makedirs(output_file_name.parent, exist_ok=True)
-                shutil.copy2(input_folder / file, output_file_name)
+                shutil.move(input_folder / file, output_file_name)
 
 if __name__ == "__main__":
 
@@ -228,7 +232,7 @@ if __name__ == "__main__":
     argument_parser.add_argument("-i", "--input_folder", required=True, help="Folder of images to extract faces from")
     argument_parser.add_argument("-o", "--output_folder", required=True, help="Folder containing the extracted faces")
     argument_parser.add_argument("-d", "--display", help="Display the detected faces on images", action='store_true')
-    argument_parser.add_argument("-t", "--confidence_threshold", help="Maximum embedding distance to reference images", default=0.8)
+    argument_parser.add_argument("-t", "--confidence_threshold", help="Maximum embedding distance to reference images", default=0.8, type=float)
     argument_parser.add_argument("-m", "--mode", required=True, choices=['crop', 'sort'])
 
     args = argument_parser.parse_args()
