@@ -199,9 +199,9 @@ def sort(args):
         if file.suffix not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
             log_file(f"{file} is not an image")
             continue
-        
+
         progress_bar.set_description(desc=file.name)
-        file = os.path.join(*file.parts[1:])
+        file = file.relative_to(input_folder)
         with Image.open(input_folder / file) as image:
 
             boxes, score, faces = classifier.detect_image(image)
