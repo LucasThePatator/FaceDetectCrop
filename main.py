@@ -25,13 +25,13 @@ def plot_rectangle(image, boxes, names=None):
     plt.imshow(draw_image)
     plt.pause(2)
 
-def make_reference_images(image, boxes): 
+def make_reference_images(image, boxes, crop_factor): 
     ret_list = []
     for box in boxes:
         box = box.tolist()
         center = np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2])
         shape = np.array([box[2] - box[0], box[3] - box[1]])
-        shape = shape * 2
+        shape = shape * crop_factor
         tl = center - shape / 2
         br = center + shape / 2
 
@@ -120,20 +120,19 @@ class Classifier:
 
         return names, distances 
 
-def crop(args):
+def crop(args, crop_factor):
     classify = args.reference != None
     input_folder = Path(args.input_folder)
     output_folder = Path(args.output_folder)
     display = args.display
 
     classifier = Classifier()
+    os.makedirs(output_folder, exist_ok=True)
     if classify:
         print("Processing reference database...")
         classifier.make_ref_db(args.reference)
         for name in classifier.embeddings["names"]:
             os.makedirs(output_folder/name, exist_ok=True)
-    else:
-        os.makedirs(output_folder)
 
     log_file_path = output_folder / "log.txt"
     log_file = open(log_file_path, 'w')
@@ -167,7 +166,7 @@ def crop(args):
             if args.display:
                 plot_rectangle(image, boxes, names)
 
-            reference_faces = make_reference_images(image, boxes)
+            reference_faces = make_reference_images(image, boxes, crop_factor=crop_factor)
             for face_i, ref_face in enumerate(reference_faces):
                 output_file_name = file.with_stem(file.stem + f"_{face_i}")
                 if classify and face_i in good_indices:
@@ -189,6 +188,7 @@ def sort(args):
 
     print("Processing reference database...")
     classifier.make_ref_db(args.reference)
+    os.makedirs(output_folder, exist_ok=True)
     for name in classifier.embeddings["names"]:
         os.makedirs(output_folder/name, exist_ok=True)
 
@@ -235,11 +235,13 @@ if __name__ == "__main__":
     argument_parser.add_argument("-d", "--display", help="Display the detected faces on images", action='store_true')
     argument_parser.add_argument("-t", "--confidence_threshold", help="Maximum embedding distance to reference images", default=0.8, type=float)
     argument_parser.add_argument("-m", "--mode", required=True, choices=['crop', 'sort'])
+    argument_parser.add_argument("--crop_factor", default=2.5, type=float, help="Factor for the crop size, 1 is strictly the face")
+
 
     args = argument_parser.parse_args()
     if args.mode == 'sort':
         sort(args)
     elif args.mode == 'crop':
-        crop(args)
+        crop(args,crop_factor=args.crop_factor)
 
    
