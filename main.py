@@ -44,7 +44,6 @@ def make_reference_images(image, boxes, crop_factor):
 
     return ret_list
 
-
 class Classifier:
     def __init__(self):
 
@@ -70,7 +69,7 @@ class Classifier:
             if not update:
                 return
             
-            update_db = True
+            update_db = update
 
         temp_embeddings = []
         for name in tqdm(os.listdir(path), desc = "Folders"):
@@ -252,7 +251,8 @@ def sort(args, classifier):
             os.makedirs(output_file_name.parent, exist_ok=True)
             shutil.move(input_folder / file, output_file_name)
 
-    log_file.flush()
+        log_file.flush()
+
 
 if __name__ == "__main__":
 
