@@ -120,7 +120,7 @@ class Classifier:
             self.embeddings["names"].extend(names)
             self.embeddings["embeddings"] = torch.cat((self.embeddings["embeddings"], emb_tensor))
         else :
-            self.embeddings = {"names" : emb_tensor, "embeddings" : emb_tensor}
+            self.embeddings = {"names" : names, "embeddings" : emb_tensor}
 
         with open(db_file_path, 'wb') as db_file:
             torch.save(self.embeddings, db_file)
