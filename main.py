@@ -59,7 +59,7 @@ class Classifier:
         directory = Path(path)
         db_file_path = directory / "db.pt"
 
-        log_file = open(directory / "reference_log.txt",'w')
+        log_file = open(directory / "reference_log.txt",'w', encoding="utf-8")
 
         update_db = False
         if db_file_path.exists():
