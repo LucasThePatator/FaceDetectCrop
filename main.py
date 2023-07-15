@@ -51,12 +51,12 @@ class Classifier:
         if mode == "crop":
             self.mtcnn = MTCNN(device="cpu", keep_all=True, select_largest=False)
         else:
-            self.mtcnn = MTCNN(device="cpu", keep_all=False, select_largest=True)
+            self.mtcnn = MTCNN(device="cpu", keep_all=True, select_largest=False)
 
         self.resnet = InceptionResnetV1(pretrained='vggface2', device="cpu").eval()
         self.embeddings = {}
 
-        ImageFile.LOAD_TRUNCATED_IMAGES 
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     def make_ref_db(self, path):
         directory = Path(path)
@@ -109,16 +109,16 @@ class Classifier:
         embeddings = self.resnet(faces.cpu()).cpu()
         nb_faces = embeddings.shape[0]
         names = [None for _ in range(nb_faces)]
-        distances = [None for _ in range(nb_faces)]
+        out_distances = [None for _ in range(nb_faces)]
         for face_i in range(nb_faces):
             min_distance = 1e36
             distances = torch.linalg.norm(embeddings[face_i, :] - self.embeddings["embeddings"], dim=1)
             min_index = torch.argmin(distances).data
 
             names[face_i] = self.embeddings["names"][min_index]
-            distances[face_i] = distances[min_index].data
+            out_distances[face_i] = distances[min_index].data
 
-        return names, distances 
+        return names, out_distances 
 
 def crop(args, crop_factor):
     classify = args.reference != None
@@ -205,8 +205,9 @@ def sort(args):
     
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
+        log_file.write(f"{file}")
         if file.suffix.lower() not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
-            log_file.write(f"{file} is not an image\n")
+            log_file.write(f" is not an image\n")
             continue
 
         progress_bar.set_description(desc=file.name)
@@ -218,22 +219,20 @@ def sort(args):
                 plot_rectangle(image, boxes, names)
 
             if boxes is None:
-                log_file.write(f"{file} has no face\n")
-                current_name="unsorted"
+                log_file.write(f" has no face\n")
+                output_subfolder="unsorted"
                 current_distance=0.0
             else:
-                faces = torch.unsqueeze(faces, 0)
                 names, distances = classifier.classify_faces(faces)
+                output_subfolder = "+".join(set(names))
 
-                current_name=names[0]
-                current_distance=distances[0]
-                if distances[0] > args.confidence_threshold:
-                    log_file.write(f"{file}\t{names[0]}\t{distances[0]}\trejected\n")
-                    current_name="unsorted"
+                if max(distances) > args.confidence_threshold:
+                    log_file.write(f"\trejected\n")
+                    output_subfolder="unsorted"
                     current_distance=0.0
-
-            log_file.write(f"{file}\t{current_name}\t{current_distance}\n")
-            output_file_name = Path(current_name) / file
+            
+            log_file.write(f"\t{output_subfolder}\t")
+            output_file_name = Path(output_subfolder) / file
             output_file_name = output_folder / output_file_name
             os.makedirs(output_file_name.parent, exist_ok=True)
             shutil.move(input_folder / file, output_file_name)
