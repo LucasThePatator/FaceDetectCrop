@@ -1,16 +1,18 @@
+
+import glob
+import shutil
+import os
+from argparse import ArgumentParser
+from pathlib import Path
+from copy import deepcopy
+
+import numpy as np
+import torch
+from tqdm import tqdm
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image, ImageDraw, ImageFont, ImageFile
 from matplotlib import pyplot as plt
-import os
-from pathlib import Path
-import numpy as np
-from argparse import ArgumentParser
-from copy import deepcopy
-import torch
-from tqdm import tqdm
-import pickle
-import glob
-import shutil
+
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
 
@@ -149,7 +151,7 @@ class Classifier:
         return names, out_distances 
 
 def crop(args, classifier, crop_factor):
-    classify = args.reference != None
+    classify = args.reference is not None
     input_folder = Path(args.input_folder)
     output_folder = Path(args.output_folder)
     display = args.display
@@ -202,7 +204,7 @@ def crop(args, classifier, crop_factor):
                 os.makedirs(output_file_name.parent, exist_ok=True)
                 ref_face.save(output_file_name)
 
-    log_file.flush()
+        log_file.flush()
 
 def sort(args, classifier):  
     if args.reference == None:
@@ -254,8 +256,7 @@ def sort(args, classifier):
         log_file.flush()
 
 
-if __name__ == "__main__":
-
+def main():
     argument_parser = ArgumentParser(prog="Face extractor")
     argument_parser.add_argument("-r", "--reference", help="Reference folder containing images of single faces with associated name")
     argument_parser.add_argument("-i", "--input_folder", required=True, help="Folder of images to extract faces from")
@@ -271,9 +272,10 @@ if __name__ == "__main__":
 
     classifier = Classifier()
 
-    if args.reference != None:
+    if args.reference is not None:
         print("Processing reference database...")
         classifier.make_ref_db(args.reference, update=args.update_db)
+
         output_folder = Path(args.output_folder)
         os.makedirs(output_folder, exist_ok=True)
         for name in classifier.embeddings["names"]:
@@ -286,4 +288,7 @@ if __name__ == "__main__":
     elif args.mode == 'crop':
         crop(args, classifier, crop_factor=args.crop_factor)
 
+if __name__ == "__main__":
+    main()
+    
    
