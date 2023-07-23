@@ -47,8 +47,9 @@ class Classifier:
         if update:
             self.load_reference_db(db_file_path)       
 
-        temp_embeddings = []
+        first_name = True
         for name in tqdm(os.listdir(directory), desc = "Folders"):
+            temp_embeddings = []
             current_dir = Path(directory / name)
             if not current_dir.is_dir():
                 continue
@@ -88,21 +89,23 @@ class Classifier:
 
                 log_file.flush()
 
-        emb_tensor = torch.empty((len(temp_embeddings), 512))
-        names = []
+            emb_tensor = torch.empty((len(temp_embeddings), 512))
+            names = []
 
-        for index, (name, emb) in enumerate(temp_embeddings):
-            emb_tensor[index, :] = emb
-            names.append(name)
+            for index, (name, emb) in enumerate(temp_embeddings):
+                emb_tensor[index, :] = emb
+                names.append(name)
 
-        if update:
-            self.embeddings["names"].extend(names)
-            self.embeddings["embeddings"] = torch.cat((self.embeddings["embeddings"], emb_tensor))
-        else :
-            self.embeddings = {"names" : names, "embeddings" : emb_tensor}
+            if update or not first_name:
+                self.embeddings["names"].extend(names)
+                self.embeddings["embeddings"] = torch.cat((self.embeddings["embeddings"], emb_tensor))
+            else :
+                self.embeddings = {"names" : names, "embeddings" : emb_tensor}
 
-        with open(db_file_path, 'wb') as db_file:
-            torch.save(self.embeddings, db_file)
+            with open(db_file_path, 'wb') as db_file:
+                torch.save(self.embeddings, db_file)
+
+            first_name = False
 
 
     def detect_image(self, image : Image):
@@ -113,7 +116,7 @@ class Classifier:
             boxes, score = self.mtcnn.detect(image, landmarks=False)
         except:
             return None, None, None         
-               
+
         faces = self.mtcnn.extract(image, boxes, None)
 
         return boxes, score, faces
