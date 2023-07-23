@@ -1,16 +1,11 @@
-import glob
-import shutil
 import os
-from argparse import ArgumentParser
 from pathlib import Path
-from copy import deepcopy
 
-import numpy as np
 import torch
 from tqdm import tqdm
 from facenet_pytorch import MTCNN, InceptionResnetV1
-from PIL import Image, ImageDraw, ImageFont, ImageFile
-from matplotlib import pyplot as plt
+from PIL import Image, ImageFile
+import csv
 
 image_extensions = [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]
 
@@ -42,21 +37,30 @@ class Classifier:
             directory = Path(path)
             db_file_path = directory / "db.pt"
 
-        log_file = open(directory / "reference_log.txt",'w', encoding="utf-8")
+        labels_file = open(directory / "labels.csv", mode = "r", newline='', encoding="utf-8")
+
+        labels_reader = csv.reader(labels_file, delimiter=';')
+        row_count = sum(1 for row in labels_reader)
+        labels_file.seek(0)
+        labels_reader = csv.reader(labels_file, delimiter=';')
+
+        log_file = open(directory / "reference_log.txt", mode = 'w', encoding="utf-8")
 
         if update:
             self.load_reference_db(db_file_path)       
 
         first_name = True
-        for name in tqdm(os.listdir(directory), desc = "Folders"):
+        for row in tqdm(labels_reader, desc = "Folders", total=row_count):
             temp_embeddings = []
-            current_dir = Path(directory / name)
+            current_dir = Path(directory / row[0])
+            name = row[1]
+
             if not current_dir.is_dir():
                 continue
 
             file_names = list(os.listdir(current_dir))
 
-            for filename in tqdm(file_names, desc = name):
+            for filename in tqdm(file_names, desc = f"{name} @ {row[0]}"):
                 filename = Path(filename)
                 log_file.write(f"{current_dir}/{filename}")
 
