@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from classifier import Classifier
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
-image_extensions = [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]
+image_extensions = [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img", ".jfif"]
 
 def plot_rectangle(image, boxes, names=None):
     draw_image = deepcopy(image)
