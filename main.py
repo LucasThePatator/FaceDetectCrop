@@ -136,7 +136,8 @@ def sort(args, classifier):
                 current_distance=0.0
             else:
                 names, distances = classifier.classify_faces(faces)
-                output_subfolder = "+".join(set(names))
+                names = sorted(set(names))
+                output_subfolder = "+".join(names)
 
                 if max(distances) > args.confidence_threshold:
                     log_file.write(f" rejected\n  with distance {max(distances)}")
