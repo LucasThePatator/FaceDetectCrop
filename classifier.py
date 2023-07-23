@@ -109,7 +109,11 @@ class Classifier:
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
-        boxes, score = self.mtcnn.detect(image, landmarks=False)
+        try:
+            boxes, score = self.mtcnn.detect(image, landmarks=False)
+        except:
+            return None, None, None         
+               
         faces = self.mtcnn.extract(image, boxes, None)
 
         return boxes, score, faces
