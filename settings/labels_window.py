@@ -27,5 +27,11 @@ def create():
         event, values = labels_window.read()
         if event == "Exit" or event == sg.WIN_CLOSED:
             break
-        
+        if event == '-TABLE-':
+            selected_index = values['-TABLE-'][0]
+            selected_row = labels_array[selected_index]
+            popup_message = "Folder: " + selected_row[0] + "\n" + "Name: " + selected_row[1]
+            sg.popup(popup_message)
+            print(selected_row)
+                    
     labels_window.close()
