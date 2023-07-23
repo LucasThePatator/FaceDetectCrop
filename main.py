@@ -1,20 +1,17 @@
 
-import glob
 import shutil
 import os
 from argparse import ArgumentParser
 from pathlib import Path
 from copy import deepcopy
-
 import numpy as np
-import torch
 from tqdm import tqdm
-from facenet_pytorch import MTCNN, InceptionResnetV1
-from PIL import Image, ImageDraw, ImageFont, ImageFile
+from PIL import Image, ImageDraw, ImageFont
 from matplotlib import pyplot as plt
-
+from classifier import Classifier
 
 fnt = ImageFont.truetype(R"arial.ttf", 80)
+image_extensions = [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]
 
 def plot_rectangle(image, boxes, names=None):
     draw_image = deepcopy(image)
@@ -46,117 +43,13 @@ def make_reference_images(image, boxes, crop_factor):
 
     return ret_list
 
-class Classifier:
-    def __init__(self):
-
-        self.mtcnn = MTCNN(device="cpu", keep_all=True, select_largest=False)
-
-        self.resnet = InceptionResnetV1(pretrained='vggface2', device="cpu").eval()
-        self.embeddings = {}
-
-        ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-    def make_ref_db(self, path, update : bool = False):
-        directory = Path(path)
-        db_file_path = directory / "db.pt"
-
-        log_file = open(directory / "reference_log.txt",'w', encoding="utf-8")
-
-        update_db = False
-        if db_file_path.exists():
-            print("Loading existing db")
-            with open(db_file_path, 'rb') as db_file:
-                self.embeddings = torch.load(db_file)
-            
-            if not update:
-                return
-            
-            update_db = update
-
-        temp_embeddings = []
-        for name in tqdm(os.listdir(path), desc = "Folders"):
-            current_dir = Path(directory / name)
-            if not current_dir.is_dir():
-                continue
-
-            file_names = list(os.listdir(current_dir))
-
-            for filename in tqdm(file_names, desc = name):
-                filename = Path(filename)
-                log_file.write(f"{current_dir}/{filename}")
-
-                with Image.open(directory / name / filename) as image:
-                    _, _, faces = self.detect_image(image)
-                    if faces is None :
-                        log_file.write(f" : no face : skip\n")
-                        continue
-                    if faces.shape[0] > 1:
-                        log_file.write(f" : {faces.shape[0]} faces : skip\n")
-                        continue
-
-                    embedding = self.resnet(faces.cpu()).cpu()
-                    if update_db:
-                        min_distance = 1e36
-                        distances = torch.linalg.norm(embedding - self.embeddings["embeddings"], dim=1)
-                        min_index = torch.argmin(distances).data
-
-                        if distances[min_index].data < 1e-5:
-                            log_file.write(f" : already in db\n")
-                            continue
-                    
-                    log_file.write(f" : added to db\n")
-                    temp_embeddings.append((name, embedding))
-
-                log_file.flush()
-
-        emb_tensor = torch.empty((len(temp_embeddings), 512))
-        names = []
-
-        for index, (name, emb) in enumerate(temp_embeddings):
-            emb_tensor[index, :] = emb
-            names.append(name)
-
-        if update_db:
-            self.embeddings["names"].extend(names)
-            self.embeddings["embeddings"] = torch.cat((self.embeddings["embeddings"], emb_tensor))
-        else :
-            self.embeddings = {"names" : names, "embeddings" : emb_tensor}
-
-        with open(db_file_path, 'wb') as db_file:
-            torch.save(self.embeddings, db_file)
-
-
-    def detect_image(self, image : Image):
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-
-        boxes, score = self.mtcnn.detect(image, landmarks=False)
-        faces = self.mtcnn.extract(image, boxes, None)
-
-        return boxes, score, faces
-
-    def classify_faces(self, faces):
-        embeddings = self.resnet(faces.cpu()).cpu()
-        nb_faces = embeddings.shape[0]
-        names = [None for _ in range(nb_faces)]
-        out_distances = [None for _ in range(nb_faces)]
-        for face_i in range(nb_faces):
-            min_distance = 1e36
-            distances = torch.linalg.norm(embeddings[face_i, :] - self.embeddings["embeddings"], dim=1)
-            min_index = torch.argmin(distances).data
-
-            names[face_i] = self.embeddings["names"][min_index]
-            out_distances[face_i] = distances[min_index].data
-
-        return names, out_distances 
-
 def crop(args, classifier, crop_factor):
     classify = args.reference is not None
     input_folder = Path(args.input_folder)
     output_folder = Path(args.output_folder)
     display = args.display
 
-    os.makedirs(output_folder, exist_ok=True)
+    classifier.make_output_folders(output_folder)
 
     log_file_path = output_folder / "log.txt"
     log_file = open(log_file_path, 'w', encoding="utf-8")
@@ -166,7 +59,7 @@ def crop(args, classifier, crop_factor):
     print("Processing images...")
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
-        if file.suffix.lower() not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
+        if file.suffix.lower() not in image_extensions:
             log_file.write(f"{file} is not an image\n")
             continue
         
@@ -199,6 +92,8 @@ def crop(args, classifier, crop_factor):
                 output_file_name = file.with_stem(file.stem + f"_{face_i}")
                 if classify and face_i in good_indices:
                     output_file_name = Path(names[face_i]) / output_file_name
+                else :
+                    output_file_name = Path("unsorted") / output_file_name
 
                 output_file_name = output_folder / output_file_name
                 os.makedirs(output_file_name.parent, exist_ok=True)
@@ -207,14 +102,15 @@ def crop(args, classifier, crop_factor):
         log_file.flush()
 
 def sort(args, classifier):  
-    if args.reference == None:
+
+    if args.reference is None:
         print("Path to db required")
 
     input_folder = Path(args.input_folder)
     output_folder = Path(args.output_folder)
     display = args.display
 
-    os.makedirs(output_folder, exist_ok=True)
+    classifier.make_output_folders(output_folder)
 
     log_file_path = output_folder / "log.txt"
     log_file = open(log_file_path, 'w', encoding="utf-8")
@@ -222,7 +118,7 @@ def sort(args, classifier):
     progress_bar = tqdm(list(input_folder.rglob("*.*")))
     for file in progress_bar:
         log_file.write(f"{file}")
-        if file.suffix.lower() not in [".png", ".tiff", ".tif", ".jpeg", ".jpg", ".webp", ".bmp", ".img"]:
+        if file.suffix.lower() not in image_extensions:
             log_file.write(f" is not an image\n")
             continue
 
@@ -255,38 +151,39 @@ def sort(args, classifier):
 
         log_file.flush()
 
-
 def main():
     argument_parser = ArgumentParser(prog="Face extractor")
     argument_parser.add_argument("-r", "--reference", help="Reference folder containing images of single faces with associated name")
-    argument_parser.add_argument("-i", "--input_folder", required=True, help="Folder of images to extract faces from")
-    argument_parser.add_argument("-o", "--output_folder", required=True, help="Folder containing the extracted faces")
+    argument_parser.add_argument("-i", "--input_folder", required=False, help="Folder of images to extract faces from")
+    argument_parser.add_argument("-o", "--output_folder", required=False, help="Folder containing the extracted faces")
     argument_parser.add_argument("-d", "--display", help="Display the detected faces on images", action='store_true')
     argument_parser.add_argument("-t", "--confidence_threshold", help="Maximum embedding distance to reference images", default=0.8, type=float)
-    argument_parser.add_argument("-m", "--mode", required=True, choices=['crop', 'sort'])
+    argument_parser.add_argument("-m", "--mode", required=True, choices=['crop', 'sort', 'update_db', 'make_db'])
     argument_parser.add_argument("--crop_factor", default=2.5, type=float, help="Factor for the crop size, 1 is strictly the face")
-    argument_parser.add_argument("--update_db",  action="store_true",  help="If it exists, updates the db with all the images in the reference folder")
-
 
     args = argument_parser.parse_args()
-
     classifier = Classifier()
 
-    if args.reference is not None:
-        print("Processing reference database...")
-        classifier.make_ref_db(args.reference, update=args.update_db)
-
-        output_folder = Path(args.output_folder)
-        os.makedirs(output_folder, exist_ok=True)
-        for name in classifier.embeddings["names"]:
-            os.makedirs(output_folder/name, exist_ok=True)
-    
-    os.makedirs(output_folder/"unsorted", exist_ok=True)
+    if args.mode == 'sort' or args.mode == 'crop':
+        classifier.load_reference_db(Path(args.reference))
 
     if args.mode == 'sort':
+        if args.input_folder is None or args.output_folder is None:
+            print("Input and output folders required for sorting")
         sort(args, classifier)
+
     elif args.mode == 'crop':
+        if args.input_folder is None or args.output_folder is None:
+            print("Input and output folders required for cropping")
         crop(args, classifier, crop_factor=args.crop_factor)
+
+    elif args.mode == 'update_db':
+        print("Processing reference database...")
+        classifier.make_ref_db(args.reference, update=True)
+
+    elif args.mode == 'make_db':
+        print("Processing reference database...")
+        classifier.make_ref_db(args.reference, update=False)
 
 if __name__ == "__main__":
     main()
